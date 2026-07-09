@@ -118,6 +118,35 @@ header .date{font-size:13px;color:var(--sub);}
   border:0;color:#fff;font-size:14px;font-weight:700;border-radius:12px;
   padding:12px 18px;cursor:pointer;flex:1;min-width:80px;
 }
+/* calendar */
+.hright{display:flex;align-items:center;gap:8px;}
+.viewbtn{
+  border:1.5px solid var(--line);background:var(--card);border-radius:10px;
+  width:34px;height:34px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+}
+.calnav{display:flex;align-items:center;justify-content:space-between;margin:14px 2px 10px;}
+.calnav b{font-size:16px;}
+.calnav button{
+  border:1.5px solid var(--line);background:var(--card);color:var(--txt);
+  width:34px;height:34px;border-radius:10px;cursor:pointer;font-size:16px;
+}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.calgrid .wd{text-align:center;font-size:11.5px;color:var(--sub);padding:4px 0 6px;font-weight:600;}
+.calgrid .wd.sun{color:var(--danger);}
+.day{
+  background:var(--card);border:1px solid var(--line);border-radius:10px;
+  min-height:54px;padding:5px 2px 4px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+}
+.day.out{opacity:.35;}
+.day .n{font-size:12.5px;font-weight:600;line-height:1;}
+.day.today{background:var(--accent-soft);}
+.day.today .n{color:var(--accent);font-weight:800;}
+.day.sel{border:2px solid var(--accent);padding:4px 1px 3px;}
+.day .dots{display:flex;gap:2.5px;flex-wrap:wrap;justify-content:center;max-width:100%;align-items:center;}
+.day .dot{width:5.5px;height:5.5px;border-radius:50%;display:inline-block;}
+.day .more{font-size:9px;color:var(--sub);line-height:1;}
+.seldate{font-size:14px;font-weight:700;margin:18px 2px 8px;}
 .toast{
   position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
   background:var(--txt);color:var(--bg);padding:10px 18px;border-radius:99px;
@@ -138,7 +167,10 @@ header .date{font-size:13px;color:var(--sub);}
 <div class="wrap">
   <header>
     <h1>모<span>아</span></h1>
-    <div class="date" id="today"></div>
+    <div class="hright">
+      <span class="date" id="today"></span>
+      <button class="viewbtn" id="viewtoggle" title="달력 보기">📅</button>
+    </div>
   </header>
 
   <div class="inputbar">
@@ -177,6 +209,10 @@ var items = [];
 var filter = 'all';
 var showDone = false;
 var pin = localStorage.getItem('moa_pin') || '';
+var view = localStorage.getItem('moa_view') || 'list';
+var _t0 = new Date();
+var calY = _t0.getFullYear(), calM = _t0.getMonth();
+var selDate = new Date(_t0.getFullYear(), _t0.getMonth(), _t0.getDate());
 
 /* ---------- 자동 분류 ---------- */
 var KW = {
@@ -417,6 +453,12 @@ function matches(it, f){
 }
 
 function render(){
+  var tbtn = document.getElementById('viewtoggle');
+  tbtn.textContent = view === 'cal' ? '📋' : '📅';
+  tbtn.title = view === 'cal' ? '목록 보기' : '달력 보기';
+  document.getElementById('chips').style.display = view === 'cal' ? 'none' : 'flex';
+  if(view === 'cal'){ renderCal(); return; }
+
   /* 필터 칩 */
   var chips = document.getElementById('chips');
   chips.innerHTML = '';
@@ -468,6 +510,103 @@ function render(){
       done.sort(function(a,b){ return new Date(b.done_at||0) - new Date(a.done_at||0); });
       done.forEach(function(it){ list.appendChild(row(it)); });
     }
+  }
+}
+
+/* ---------- 달력 ---------- */
+function dayKey(d){ return d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate(); }
+
+function renderCal(){
+  var list = document.getElementById('list');
+  list.innerHTML = '';
+  var wds = ['일','월','화','수','목','금','토'];
+
+  /* 월 이동 내비게이션 */
+  var nav = document.createElement('div'); nav.className = 'calnav';
+  var prev = document.createElement('button'); prev.textContent = '‹';
+  prev.onclick = function(){ calM--; if(calM < 0){ calM = 11; calY--; } render(); };
+  var next = document.createElement('button'); next.textContent = '›';
+  next.onclick = function(){ calM++; if(calM > 11){ calM = 0; calY++; } render(); };
+  var title = document.createElement('b');
+  title.textContent = calY + '년 ' + (calM+1) + '월';
+  nav.appendChild(prev); nav.appendChild(title); nav.appendChild(next);
+  list.appendChild(nav);
+
+  /* 날짜별 항목 맵 */
+  var map = {};
+  items.forEach(function(it){
+    if(!it.due_at) return;
+    var k = dayKey(new Date(it.due_at));
+    if(!map[k]) map[k] = [];
+    map[k].push(it);
+  });
+
+  var grid = document.createElement('div'); grid.className = 'calgrid';
+  wds.forEach(function(w, idx){
+    var h = document.createElement('div');
+    h.className = 'wd' + (idx === 0 ? ' sun' : '');
+    h.textContent = w;
+    grid.appendChild(h);
+  });
+
+  var first = new Date(calY, calM, 1);
+  var daysInMonth = new Date(calY, calM+1, 0).getDate();
+  var cells = Math.ceil((first.getDay() + daysInMonth) / 7) * 7;
+  var start = addDays(first, -first.getDay());
+  var todayK = dayKey(new Date());
+
+  for(var i = 0; i < cells; i++){
+    (function(d){
+      var k = dayKey(d);
+      var cell = document.createElement('div');
+      cell.className = 'day'
+        + (d.getMonth() !== calM ? ' out' : '')
+        + (k === todayK ? ' today' : '')
+        + (k === dayKey(selDate) ? ' sel' : '');
+      var n = document.createElement('div');
+      n.className = 'n'; n.textContent = d.getDate();
+      cell.appendChild(n);
+      var dayItems = map[k] || [];
+      if(dayItems.length){
+        var dots = document.createElement('div'); dots.className = 'dots';
+        dayItems.slice(0, 4).forEach(function(it){
+          var dot = document.createElement('span'); dot.className = 'dot';
+          dot.style.background = CATS[it.category] ? CATS[it.category].color : '#888';
+          if(it.done) dot.style.opacity = .3;
+          dots.appendChild(dot);
+        });
+        if(dayItems.length > 4){
+          var mo = document.createElement('span'); mo.className = 'more';
+          mo.textContent = '+' + (dayItems.length - 4);
+          dots.appendChild(mo);
+        }
+        cell.appendChild(dots);
+      }
+      cell.onclick = function(){
+        selDate = d;
+        if(d.getMonth() !== calM){ calM = d.getMonth(); calY = d.getFullYear(); }
+        render();
+      };
+      grid.appendChild(cell);
+    })(addDays(start, i));
+  }
+  list.appendChild(grid);
+
+  /* 선택한 날짜의 항목 목록 */
+  var head = document.createElement('div'); head.className = 'seldate';
+  head.textContent = (selDate.getMonth()+1) + '월 ' + selDate.getDate() + '일 ' + wds[selDate.getDay()] + '요일';
+  list.appendChild(head);
+  var selItems = (map[dayKey(selDate)] || []).slice();
+  if(selItems.length === 0){
+    var e = document.createElement('div'); e.className = 'empty';
+    e.textContent = '이 날짜에는 항목이 없어요';
+    list.appendChild(e);
+  }else{
+    selItems.sort(function(a,b){
+      if(a.done !== b.done) return a.done ? 1 : -1;
+      return new Date(a.due_at) - new Date(b.due_at);
+    });
+    selItems.forEach(function(it){ list.appendChild(row(it)); });
   }
 }
 
@@ -538,6 +677,11 @@ function toast(msg){
 
 /* ---------- 초기화 ---------- */
 document.getElementById('add').onclick = addItem;
+document.getElementById('viewtoggle').onclick = function(){
+  view = (view === 'list') ? 'cal' : 'list';
+  localStorage.setItem('moa_view', view);
+  render();
+};
 document.getElementById('inp').addEventListener('keydown', function(e){
   if(e.key === 'Enter'){ e.preventDefault(); addItem(); }
 });
