@@ -76,7 +76,7 @@ header .date{font-size:13px;color:var(--sub);}
 .item.done .check{background:var(--accent);border-color:var(--accent);}
 .item.done .check:after{content:"✓";color:#fff;font-size:14px;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;}
 .body{flex:1;min-width:0;}
-.txt{font-size:15.5px;line-height:1.45;word-break:break-all;}
+.txt{font-size:15.5px;line-height:1.45;word-break:break-all;cursor:pointer;}
 .meta{display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap;}
 .cat{
   border:0;font-size:11.5px;font-weight:700;color:#fff;border-radius:7px;
@@ -89,6 +89,29 @@ header .date{font-size:13px;color:var(--sub);}
   border:0;background:transparent;color:var(--sub);font-size:17px;cursor:pointer;
   flex:none;padding:2px 6px;opacity:.5;
 }
+.edit{
+  border:0;background:transparent;color:var(--sub);font-size:14px;cursor:pointer;
+  flex:none;padding:2px 6px;opacity:.5;
+}
+.editform{flex:1;min-width:0;}
+.editform input[type="text"]{
+  width:100%;font-size:15.5px;padding:8px 10px;border-radius:10px;
+  border:1.5px solid var(--accent);background:var(--bg);color:var(--txt);outline:0;box-sizing:border-box;
+}
+.editform input[type="datetime-local"]{
+  margin-top:8px;font-size:13px;padding:6px 8px;border-radius:8px;
+  border:1.5px solid var(--line);background:var(--bg);color:var(--txt);outline:0;
+}
+.editform .editrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;}
+.editform .clearbtn{
+  border:0;background:transparent;color:var(--sub);font-size:12px;cursor:pointer;text-decoration:underline;
+}
+.editform .editbtns{display:flex;gap:6px;margin-top:10px;}
+.editform .editbtns button{
+  border:0;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;
+}
+.editform .save{background:var(--accent);color:#fff;}
+.editform .cancel{background:var(--line);color:var(--txt);}
 .empty{text-align:center;color:var(--sub);padding:48px 0;font-size:14.5px;line-height:1.8;}
 .empty b{font-size:30px;display:block;margin-bottom:6px;}
 .donetoggle{
@@ -213,6 +236,7 @@ var view = localStorage.getItem('moa_view') || 'list';
 var _t0 = new Date();
 var calY = _t0.getFullYear(), calM = _t0.getMonth();
 var selDate = new Date(_t0.getFullYear(), _t0.getMonth(), _t0.getDate());
+var editingId = null;
 
 /* ---------- 자동 분류 ---------- */
 var KW = {
@@ -313,6 +337,10 @@ function parseDue(text){
 }
 function addDays(d, n){ var r = new Date(d); r.setDate(r.getDate()+n); return r; }
 function stripTime(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function pad2(n){ return (n < 10 ? '0' : '') + n; }
+function toDatetimeLocal(d){
+  return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
 
 function dueLabel(iso){
   if(!iso) return null;
@@ -414,6 +442,25 @@ function removeItem(it){
   items = items.filter(function(x){ return x.id !== it.id; });
   render();
   api('/api/items?id=' + it.id, {method:'DELETE'}).catch(function(){ load(); });
+}
+
+function startEdit(it){
+  editingId = it.id;
+  render();
+}
+function cancelEdit(){
+  editingId = null;
+  render();
+}
+function saveEdit(it, text, dueVal){
+  text = text.trim();
+  if(!text){ toast('내용을 입력해주세요'); return; }
+  var due = dueVal ? new Date(dueVal) : null;
+  it.content = text;
+  it.due_at = due ? due.toISOString() : null;
+  editingId = null;
+  render();
+  api('/api/items?id=' + it.id, {method:'PATCH', body:JSON.stringify({content:text, due_at:it.due_at})}).catch(function(){ load(); });
 }
 var sheetTarget = null;
 function openSheet(it){
@@ -613,6 +660,47 @@ function renderCal(){
 function row(it){
   var div = document.createElement('div');
   div.className = 'item' + (it.done ? ' done' : '');
+
+  if(editingId === it.id){
+    var chk0 = document.createElement('button');
+    chk0.className = 'check';
+    chk0.onclick = function(){ toggleDone(it); };
+    var form = document.createElement('div');
+    form.className = 'editform';
+    var txtInp = document.createElement('input');
+    txtInp.type = 'text'; txtInp.value = it.content;
+    txtInp.addEventListener('keydown', function(e){
+      if(e.key === 'Enter'){ e.preventDefault(); saveEdit(it, txtInp.value, dtInp.value); }
+      else if(e.key === 'Escape'){ e.preventDefault(); cancelEdit(); }
+    });
+    form.appendChild(txtInp);
+    var erow = document.createElement('div'); erow.className = 'editrow';
+    var dtInp = document.createElement('input');
+    dtInp.type = 'datetime-local';
+    if(it.due_at) dtInp.value = toDatetimeLocal(new Date(it.due_at));
+    erow.appendChild(dtInp);
+    if(it.due_at){
+      var clearBtn = document.createElement('button');
+      clearBtn.className = 'clearbtn'; clearBtn.type = 'button';
+      clearBtn.textContent = '날짜 지우기';
+      clearBtn.onclick = function(){ dtInp.value = ''; };
+      erow.appendChild(clearBtn);
+    }
+    form.appendChild(erow);
+    var btns = document.createElement('div'); btns.className = 'editbtns';
+    var saveBtn = document.createElement('button');
+    saveBtn.className = 'save'; saveBtn.type = 'button'; saveBtn.textContent = '저장';
+    saveBtn.onclick = function(){ saveEdit(it, txtInp.value, dtInp.value); };
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = 'cancel'; cancelBtn.type = 'button'; cancelBtn.textContent = '취소';
+    cancelBtn.onclick = function(){ cancelEdit(); };
+    btns.appendChild(saveBtn); btns.appendChild(cancelBtn);
+    form.appendChild(btns);
+    div.appendChild(chk0); div.appendChild(form);
+    setTimeout(function(){ txtInp.focus(); txtInp.setSelectionRange(txtInp.value.length, txtInp.value.length); }, 0);
+    return div;
+  }
+
   var chk = document.createElement('button');
   chk.className = 'check';
   chk.onclick = function(){ toggleDone(it); };
@@ -620,6 +708,7 @@ function row(it){
   body.className = 'body';
   var txt = document.createElement('div');
   txt.className = 'txt'; txt.textContent = it.content;
+  txt.onclick = function(){ startEdit(it); };
   var meta = document.createElement('div');
   meta.className = 'meta';
   var cat = document.createElement('button');
@@ -636,10 +725,13 @@ function row(it){
     meta.appendChild(due);
   }
   body.appendChild(txt); body.appendChild(meta);
+  var editBtn = document.createElement('button');
+  editBtn.className = 'edit'; editBtn.textContent = '✏️';
+  editBtn.onclick = function(){ startEdit(it); };
   var del = document.createElement('button');
   del.className = 'del'; del.textContent = '×';
   del.onclick = function(){ removeItem(it); };
-  div.appendChild(chk); div.appendChild(body); div.appendChild(del);
+  div.appendChild(chk); div.appendChild(body); div.appendChild(editBtn); div.appendChild(del);
   return div;
 }
 
