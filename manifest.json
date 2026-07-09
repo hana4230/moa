@@ -1,0 +1,14 @@
+{
+  "name": "모아",
+  "short_name": "모아",
+  "description": "뭐든 적으면 알아서 정리되는 개인 비서",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F4F4FA",
+  "theme_color": "#6C5CE7",
+  "icons": [
+    { "src": "./icon.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
